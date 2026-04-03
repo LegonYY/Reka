@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR Сканер</title>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       Пути к файлам — измените при необходимости:
+       MARKER  → ar-site/markers/target.mind
+       VIDEO   → ar-site/videos/video.mp4
+  ═══════════════════════════════════════════════════════════════ -->
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; }
+
+    /* ── HUD ── */
+    #hud {
+      position: fixed; inset: 0; z-index: 100; pointer-events: none;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      padding-bottom: 40px;
+    }
+
+    /* Scanning frame */
+    #frame {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -55%);
+      width: clamp(200px, 70vw, 300px);
+      height: clamp(200px, 70vw, 300px);
+      transition: opacity 0.5s;
+    }
+    #frame.found { opacity: 0; }
+
+    .c { position: absolute; width: 30px; height: 30px; border-color: rgba(192,132,252,.85); border-style: solid; }
+    .c.tl { top:0;left:0; border-width:2.5px 0 0 2.5px; border-radius:5px 0 0 0; }
+    .c.tr { top:0;right:0; border-width:2.5px 2.5px 0 0; border-radius:0 5px 0 0; }
+    .c.bl { bottom:0;left:0; border-width:0 0 2.5px 2.5px; border-radius:0 0 0 5px; }
+    .c.br { bottom:0;right:0; border-width:0 2.5px 2.5px 0; border-radius:0 0 5px 0; }
+    .sl {
+      position: absolute; left:4px; right:4px; height:2px;
+      background: linear-gradient(90deg, transparent, rgba(192,132,252,.9), transparent);
+      animation: scan 2s ease-in-out infinite;
+    }
+    @keyframes scan { 0%{top:4px;opacity:1} 90%{top:calc(100% - 6px);opacity:.3} 100%{top:4px;opacity:1} }
+
+    /* Status pill */
+    #pill {
+      background: rgba(5,5,14,.7); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,.1); border-radius: 40px;
+      padding: 10px 22px; font-size: .85rem;
+      display: flex; align-items: center; gap: 9px;
+      transition: border-color .4s;
+    }
+    #pill.found { border-color: rgba(52,211,153,.5); }
+    .dot { width:8px; height:8px; border-radius:50%; background:#7c3aed; animation:blink 1.4s ease-in-out infinite; }
+    #pill.found .dot { background:#34d399; animation:none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    #ptxt { color:#c4b5fd; transition:color .3s; }
+    #pill.found #ptxt { color:#6ee7b7; }
+
+    /* Error screen */
+    #err {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: #080810;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 32px; text-align: center;
+    }
+    #err.show { display: flex; }
+    #err h2 { color: #f87171; font-size: 1.2rem; }
+    #err p  { color: #64748b; font-size: .85rem; line-height: 1.6; max-width: 320px; }
+    #err a  { color: #c084fc; }
+  </style>
+</head>
+<body>
+
+<!-- ══ AR ══ -->
+<a-scene
+  id="scene"
+  mindar-image="imageTargetSrc: ./markers/target.mind; uiLoading: no; uiScanning: no; uiError: no;"
+  color-space="sRGB"
+  renderer="colorManagement: true, physicallyCorrectLights"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: false">
+
+  <a-assets>
+    <video id="vid"
+      src="./videos/video.mp4"
+      muted
+      playsinline
+      loop
+      preload="auto"
+    ></video>
+  </a-assets>
+
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+  <a-entity id="tgt" mindar-image-target="targetIndex: 0">
+    <!--
+      Размер видео-плоскости. Соответствует пропорциям маркера (ширина:высота = 1:0.552).
+      Если у вашего маркера другие пропорции — измените height.
+    -->
+    <a-video
+      src="#vid"
+      position="0 0 0"
+      width="1"
+      height="0.552"
+      rotation="0 0 0">
+    </a-video>
+  </a-entity>
+
+</a-scene>
+
+<!-- ══ HUD ══ -->
+<div id="hud">
+  <div id="frame">
+    <div class="c tl"></div><div class="c tr"></div>
+    <div class="c bl"></div><div class="c br"></div>
+    <div class="sl"></div>
+  </div>
+  <div id="pill">
+    <div class="dot"></div>
+    <span id="ptxt">Наведите камеру на маркер</span>
+  </div>
+</div>
+
+<!-- ══ Ошибка (файлы не найдены) ══ -->
+<div id="err">
+  <h2>⚠️ Файлы не найдены</h2>
+  <p id="err-msg"></p>
+  <p>
+    Положите <strong>target.mind</strong> в папку <code>ar-site/markers/</code><br>
+    и <strong>video.mp4</strong> в папку <code>ar-site/videos/</code>
+  </p>
+</div>
+
+<script>
+  const vid   = document.getElementById('vid');
+  const tgt   = document.getElementById('tgt');
+  const pill  = document.getElementById('pill');
+  const frame = document.getElementById('frame');
+  const ptxt  = document.getElementById('ptxt');
+  const err   = document.getElementById('err');
+  const errMsg= document.getElementById('err-msg');
+
+  // ── Check if required files are accessible ──────────────
+  async function fileExists(url) {
+    try {
+      const r = await fetch(url, { method: 'HEAD' });
+      return r.ok;
+    } catch { return false; }
+  }
+
+  (async () => {
+    const [mindOk, videoOk] = await Promise.all([
+      fileExists('./markers/target.mind'),
+      fileExists('./videos/video.mp4'),
+    ]);
+
+    if (!mindOk || !videoOk) {
+      const missing = [];
+      if (!mindOk)  missing.push('markers/target.mind');
+      if (!videoOk) missing.push('videos/video.mp4');
+      errMsg.textContent = 'Не найдено: ' + missing.join(', ');
+      err.classList.add('show');
+    }
+  })();
+
+  // ── Video play / pause on marker ────────────────────────
+  tgt.addEventListener('targetFound', () => {
+    vid.play().catch(() => {});
+    pill.classList.add('found');
+    frame.classList.add('found');
+    ptxt.textContent = '✓ Маркер найден';
+  });
+
+  tgt.addEventListener('targetLost', () => {
+    vid.pause();
+    pill.classList.remove('found');
+    frame.classList.remove('found');
+    ptxt.textContent = 'Наведите камеру на маркер';
+  });
+</script>
+
+</body>
+</html>
